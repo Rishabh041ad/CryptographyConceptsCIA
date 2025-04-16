@@ -42,6 +42,10 @@ int modInverse(int a, int m) {
 
 void affine(char *in, char *out, int a, int b, int decrypt) {
     int a_inv = modInverse(a, 26);
+    if (decrypt && a_inv == -1) {
+        strcpy(out, "Error: 'a' does not have a modular inverse for decryption.");
+        return;
+    }
     for (int i = 0; in[i]; i++) {
         if (isalpha(in[i])) {
             char base = isupper(in[i]) ? 'A' : 'a';
@@ -68,7 +72,7 @@ void polySub(char *in, char *out, char *key, int decrypt, int isNumeric, int aut
             int shift = isNumeric ? key[j % klen] - '0' : tolower(autoMode ? fullKey[i] : key[j % klen]) - 'a';
             if (decrypt) shift = 26 - shift;
             char base = isupper(in[i]) ? 'A' : 'a';
-            out[i] = (in[i] - base + shift) % 26 + base;
+            out[i] = (in[i] - base + shift + 26) % 26 + base;
             j++;
         } else {
             out[i] = in[i];
@@ -100,7 +104,15 @@ void ngram(char *in, char *out) {
         {"RE", "XF"}, {"ND", "XG"}, {"ON", "XH"}, {"EN", "XI"}, {"AT", "XJ"}
     };
     int len = strlen(in), idx = 0;
-    if (len % 2) strcat(in, "X");
+    if (len % 2) {
+        char temp[MAX];
+        strcpy(temp, in);
+        strcat(temp, "X");
+        len++;
+        for (int i = 0; i < len; i++) {
+            in[i] = temp[i];
+        }
+    }
     for (int i = 0; i < len; i += 2) {
         char bigram[3] = {toupper(in[i]), toupper(in[i + 1]), '\0'};
         int replaced = 0;
@@ -140,18 +152,28 @@ void railFence(char *in, char *out, int rails) {
 // Route Cipher
 void route(char *in, char *out, int rows, int cols) {
     char mat[rows][cols];
+    int len = strlen(in);
     int k = 0;
-    for (int i = 0; i < rows && k < strlen(in); i++)
-        for (int j = 0; j < cols && k < strlen(in); j++)
-            mat[i][j] = in[k++];
+    for (int i = 0; i < rows; i++) {
+        for (int j = 0; j < cols; j++) {
+            if (k < len) {
+                mat[i][j] = in[k++];
+            } else {
+                mat[i][j] = 'X'; // Pad with 'X' if input is shorter
+            }
+        }
+    }
     int index = 0, top = 0, bottom = rows - 1, left = 0, right = cols - 1;
     while (top <= bottom && left <= right) {
         for (int i = left; i <= right; i++) out[index++] = mat[top][i];
         top++;
+        if (top > bottom || left > right) break;
         for (int i = top; i <= bottom; i++) out[index++] = mat[i][right];
         right--;
+        if (top > bottom || left > right) break;
         for (int i = right; i >= left; i--) out[index++] = mat[bottom][i];
         bottom--;
+        if (top > bottom || left > right) break;
         for (int i = bottom; i >= top; i--) out[index++] = mat[i][left];
         left++;
     }
@@ -166,63 +188,102 @@ void myszkowski(char *in, char *out, char *key) {
     for (int i = 0, idx = 0; i < rows && idx < len; i++)
         for (int j = 0; j < klen && idx < len; j++)
             mat[i][j] = in[idx++];
-    int idx = 0;
-    for (char ch = '1'; ch <= '9'; ch++) {
-        for (int col = 0; col < klen; col++) {
-            if (key[col] == ch)
-                for (int row = 0; row < rows; row++)
-                    out[idx++] = mat[row][col];
+
+    char sortedKey[MAX];
+    strcpy(sortedKey, key);
+    // Sort the key numerically
+    for (int i = 0; i < klen - 1; i++) {
+        for (int j = 0; j < klen - i - 1; j++) {
+            if (key[j] > key[j + 1]) {
+                char temp = key[j];
+                key[j] = key[j + 1];
+                key[j + 1] = temp;
+            }
         }
     }
-    out[idx] = '\0';
+
+    int out_idx = 0;
+    for (char ch = '0'; ch <= '9'; ch++) {
+        for (int col = 0; col < klen; col++) {
+            if (sortedKey[col] == ch) {
+                for (int row = 0; row < rows; row++) {
+                    out[out_idx++] = mat[row][col];
+                }
+            }
+        }
+    }
+    out[out_idx] = '\0';
 }
 
 // === Main ===
 int main() {
-    int choice, mode, shift, a, b, rails, rows, cols;
-    char input[MAX], output[MAX], key[MAX];
+    int mode, shift, a, b, rails, rows, cols;
+    char input[MAX], output[MAX], key[MAX], num_key[MAX];
 
-    printf("Select Mode:\n1. Encrypt\n2. Decrypt\nChoice: ");
-    scanf("%d", &mode); getchar();
+    // Caesar
+    printf("Caesar Cipher:\n");
+    strcpy(input, "HELLO"); shift = 3; mode = 1;
+    caesar(input, output, shift); printf("  Encrypted: %s\n", output);
+    caesar(output, input, -shift); printf("  Decrypted: %s\n", input);
 
-    printf("\nSelect Cipher:\n1.Caesar\n2.Atbash\n3.August\n4.Affine\n5.Vigenere\n");
-    printf("6.Gronsfeld\n7.Beaufort\n8.Autoclave\n9.NGram\n10.Hill (NA)\n11.Rail Fence\n12.Route\n13.Myszkowski\nChoice: ");
-    scanf("%d", &choice); getchar();
+    // Atbash
+    printf("\nAtbash Cipher:\n");
+    strcpy(input, "HELLO");
+    atbash(input, output); printf("  Encrypted: %s\n", output);
+    atbash(output, input); printf("  Decrypted: %s\n", input);
 
-    printf("\nEnter text: ");
-    fgets(input, MAX, stdin);
-    input[strcspn(input, "\n")] = 0;
+    // August (Caesar shift 1)
+    printf("\nAugust Cipher:\n");
+    strcpy(input, "HELLO"); mode = 1;
+    caesar(input, output, 1); printf("  Encrypted: %s\n", output);
+    caesar(output, input, -1); printf("  Decrypted: %s\n", input);
 
-    switch (choice) {
-        case 1: printf("Enter shift: "); scanf("%d", &shift);
-                caesar(input, output, mode == 1 ? shift : -shift); break;
-        case 2: atbash(input, output); break;
-        case 3: caesar(input, output, mode == 1 ? 1 : -1); break;
-        case 4: printf("Enter a (coprime to 26) and b: "); scanf("%d%d", &a, &b);
-                affine(input, output, a, b, mode == 2); break;
-        case 5: printf("Enter key: "); scanf("%s", key);
-                polySub(input, output, key, mode == 2, 0, 0); break;
-        case 6: printf("Enter numeric key: "); scanf("%s", key);
-                polySub(input, output, key, mode == 2, 1, 0); break;
-        case 7: printf("Enter key: "); scanf("%s", key);
-                beaufort(input, output, key); break;
-        case 8: printf("Enter key: "); scanf("%s", key);
-                polySub(input, output, key, mode == 2, 0, 1); break;
-        case 9: if (mode == 2) { printf("Decryption not supported.\n"); return 1; }
-                ngram(input, output); break;
-        case 10: printf("Hill cipher not implemented.\n"); return 1;
-        case 11: printf("Enter rails: "); scanf("%d", &rails);
-                 if (mode == 1) railFence(input, output, rails);
-                 else { printf("Rail Fence decryption not implemented.\n"); return 1; } break;
-        case 12: printf("Enter rows and cols: "); scanf("%d%d", &rows, &cols);
-                 if (mode == 1) route(input, output, rows, cols);
-                 else { printf("Route decryption not implemented.\n"); return 1; } break;
-        case 13: printf("Enter numeric key: "); scanf("%s", key);
-                 if (mode == 1) myszkowski(input, output, key);
-                 else { printf("Myszkowski decryption not implemented.\n"); return 1; } break;
-        default: printf("Invalid choice.\n"); return 1;
-    }
+    // Affine
+    printf("\nAffine Cipher:\n");
+    strcpy(input, "HELLO"); a = 5; b = 7; mode = 1;
+    affine(input, output, a, b, 0); printf("  Encrypted: %s\n", output);
+    strcpy(input, output); mode = 2;
+    affine(input, output, a, b, 1); printf("  Decrypted: %s\n", output);
 
-    printf("\nResult: %s\n", output);
+    // Vigenere
+    printf("\nVigenere Cipher:\n");
+    strcpy(input, "HELLO"); strcpy(key, "KEY"); mode = 1;
+    polySub(input, output, key, 0, 0, 0); printf("  Encrypted: %s\n", output);
+
+    // Gronsfeld
+    printf("\nGronsfeld Cipher:\n");
+    strcpy(input, "HELLO"); strcpy(num_key, "314"); mode = 1;
+    polySub(input, output, num_key, 0, 1, 0); printf("  Encrypted: %s\n", output);
+
+    // Beaufort
+    printf("\nBeaufort Cipher:\n");
+    strcpy(input, "HELLO"); strcpy(key, "KEY");
+    beaufort(input, output, key); printf("  Encrypted: %s\n", output);
+
+    // Autoclave
+    printf("\nAutoclave Cipher:\n");
+    strcpy(input, "HELLO"); strcpy(key, "KEY"); mode = 1;
+    polySub(input, output, key, 0, 0, 1); printf("  Encrypted: %s\n", output);
+
+    // NGram
+    printf("\nNGram Cipher:\n");
+    strcpy(input, "THIS IS A TEST"); mode = 1;
+    ngram(input, output); printf("  Encrypted: %s\n", output);
+
+    // Rail Fence
+    printf("\nRail Fence Cipher:\n");
+    strcpy(input, "HELLO"); rails = 3; mode = 1;
+    railFence(input, output, rails); printf("  Encrypted: %s\n", output);
+
+    // Route
+    printf("\nRoute Cipher:\n");
+    strcpy(input, "HELLO"); rows = 3; cols = 4; mode = 1;
+    route(input, output, rows, cols); printf("  Encrypted: %s\n", output);
+
+    // Myszkowski
+    printf("\nMyszkowski Cipher:\n");
+    strcpy(input, "HELLO"); strcpy(num_key, "314"); mode = 1;
+    myszkowski(input, output, num_key); printf("  Encrypted: %s\n", output);
+
     return 0;
 }
